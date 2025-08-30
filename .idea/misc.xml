@@ -1,0 +1,11 @@
+<project version="4">
+  <component name="Black">
+    <option name="sdkName" value="Python 3.11 (venv)" />
+  </component>
+  <component name="GithubDefaultAccount">
+    <option name="defaultAccountId" value="1cfe2ff2-4b27-49b3-a528-82ee23d4eeac" />
+  </component>
+  <component name="ProjectRootManager">
+    <output url="file://$PROJECT_DIR$/out" />
+  </component>
+</project>

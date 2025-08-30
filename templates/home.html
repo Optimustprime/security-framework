@@ -1,0 +1,472 @@
+{% extends "base.html" %}
+
+{% block head %}
+<title>Security Scan Dashboard - Home</title>
+<style>
+    .scan-form-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 15px;
+    }
+    .scan-form-card .card-header {
+        background: rgba(255,255,255,0.1);
+        border-bottom: 1px solid rgba(255,255,255,0.2);
+    }
+    .progress-container {
+        background: rgba(255,255,255,0.1);
+        border-radius: 10px;
+        padding: 1rem;
+    }
+    .notification {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 1050;
+        min-width: 300px;
+    }
+    .chart-container {
+        position: relative;
+        height: 300px;
+    }
+    .scan-stats {
+        background: #f8f9fa;
+        border-radius: 10px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Notifications Container -->
+<div id="notifications"></div>
+
+<!-- Quick Stats Overview -->
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="scan-stats">
+            <div class="row" id="quickStats">
+                <!-- Quick stats will be loaded here -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Enhanced Scan Form -->
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card scan-form-card">
+            <div class="card-header">
+                <h4><i class="fas fa-shield-alt"></i> Start New Security Scan</h4>
+            </div>
+            <div class="card-body">
+                <form id="scanForm" action="/start_scan" method="POST" class="row g-3">
+                    <div class="col-md-8">
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-globe"></i></span>
+                            <input type="url" class="form-control" id="target_url" name="target_url"
+                                   placeholder="Enter target URL (e.g., https://example.com)" required>
+                        </div>
+                        <small class="form-text text-light">Enter a valid URL including protocol (http:// or https://)</small>
+                    </div>
+                    <div class="col-md-4">
+                        <button type="submit" class="btn btn-warning btn-lg w-100" id="scanButton">
+                            <span id="scanSpinner" class="spinner-border spinner-border-sm d-none me-2" role="status"></span>
+                            <i class="fas fa-search" id="scanIcon"></i> Start Scan
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Enhanced Progress Display -->
+                <div id="scanStatus" class="mt-4 d-none">
+                    <div class="progress-container">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <div>
+                                <span id="scanStatusText">Initializing scan...</span>
+                                <small id="currentRule" class="text-light d-block"></small>
+                            </div>
+                            <span id="scanProgressPercent">0%</span>
+                        </div>
+                        <div class="progress mb-2">
+                            <div id="scanProgressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-warning"
+                                 role="progressbar" style="width: 0%"></div>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <small id="scanStartTime"></small>
+                            <small id="scanElapsedTime">Elapsed: 0s</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts and Recent Scans Row -->
+<div class="row">
+    <!-- Risk Distribution Chart -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-dark text-white">
+                <h4><i class="fas fa-chart-pie"></i> Risk Distribution</h4>
+            </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="riskChart"></canvas>
+                </div>
+                <div class="mt-3">
+                    <ul class="list-group" id="riskList">
+                        <!-- Risk data will be populated by JavaScript -->
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Scans -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                <h4><i class="fas fa-history"></i> Recent Scans</h4>
+                <button class="btn btn-sm btn-outline-light" onclick="refreshRecentScans()">
+                    <i class="fas fa-sync"></i>
+                </button>
+            </div>
+            <div class="card-body">
+                <div id="recentScansContainer">
+                    <!-- Recent scans will be populated here -->
+                </div>
+                <div class="text-center mt-3">
+                    <a href="/dashboard" class="btn btn-primary">
+                        <i class="fas fa-tachometer-alt"></i> View Full Dashboard
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Get chart data passed from Flask
+    const chartData = {{ chart_data|tojson }};
+    const recentScans = {{ recent_scans|tojson }};
+
+    let scanStartTime;
+    let scanTimer;
+
+    document.addEventListener('DOMContentLoaded', function() {
+        loadQuickStats();
+        populateRiskDistribution();
+        populateRecentScans();
+        createChart();
+    });
+
+    function loadQuickStats() {
+        fetch('/api/statistics')
+            .then(response => response.json())
+            .then(data => {
+                const quickStats = document.getElementById('quickStats');
+                quickStats.innerHTML = `
+                    <div class="col-md-3 text-center">
+                        <h5 class="text-primary">${data.total_scans}</h5>
+                        <small>Total Scans</small>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <h5 class="text-danger">${data.high_risk_alerts}</h5>
+                        <small>High Risk Alerts</small>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <h5 class="text-info">${data.total_alerts}</h5>
+                        <small>Total Alerts</small>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <h5 class="text-success">${data.recent_scans}</h5>
+                        <small>Recent Scans</small>
+                    </div>
+                `;
+            })
+            .catch(error => console.error('Error loading quick stats:', error));
+    }
+
+    function populateRiskDistribution() {
+        const riskList = document.getElementById('riskList');
+        if (chartData && chartData.labels && chartData.labels.length > 0) {
+            riskList.innerHTML = '';
+            for (let i = 0; i < chartData.labels.length; i++) {
+                const listItem = document.createElement('li');
+                listItem.className = 'list-group-item d-flex justify-content-between align-items-center';
+                listItem.innerHTML = `
+                    <span><i class="fas fa-circle" style="color: ${chartData.colors[i]}"></i> ${chartData.labels[i]}</span>
+                    <span class="badge bg-dark rounded-pill">${chartData.data[i] || 0}</span>
+                `;
+                riskList.appendChild(listItem);
+            }
+        } else {
+            riskList.innerHTML = '<li class="list-group-item text-center text-muted">No scan data available</li>';
+        }
+    }
+
+    function populateRecentScans() {
+        const container = document.getElementById('recentScansContainer');
+        if (recentScans && recentScans.length > 0) {
+            container.innerHTML = '';
+            recentScans.forEach(function(scan, index) {
+                if (index < 5) { // Limit to 5 recent scans for home page
+                    const scanDiv = document.createElement('div');
+                    scanDiv.className = 'border-bottom pb-2 mb-2';
+                    scanDiv.innerHTML = `
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong class="text-truncate" style="max-width: 200px;">${scan.target_url}</strong><br>
+                                <small class="text-muted">${formatDate(scan.scan_date)}</small>
+                            </div>
+                            <div class="text-end">
+                                <span class="badge bg-primary">Total: ${scan.total_alerts || 0}</span><br>
+                                <span class="badge bg-danger">High: ${scan.high_risk || 0}</span>
+                                <span class="badge bg-warning">Med: ${scan.medium_risk || 0}</span>
+                            </div>
+                        </div>
+                    `;
+                    container.appendChild(scanDiv);
+                }
+            });
+        } else {
+            container.innerHTML = '<p class="text-center text-muted">No recent scans available</p>';
+        }
+    }
+
+    function createChart() {
+        if (chartData && chartData.labels && chartData.labels.length > 0) {
+            const ctx = document.getElementById('riskChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: chartData.labels,
+                    datasets: [{
+                        data: chartData.data,
+                        backgroundColor: chartData.colors,
+                        borderWidth: 2,
+                        borderColor: '#fff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false // We'll show legend separately
+                        },
+                        title: {
+                            display: true,
+                            text: 'Security Risk Distribution',
+                            font: { size: 16 }
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    function formatDate(dateString) {
+        try {
+            const date = new Date(dateString);
+            // Check if date is invalid
+            if (isNaN(date.getTime())) {
+                // Try parsing the date string directly if it's in our custom format
+                const [datePart, timePart] = dateString.split(' ');
+                if (datePart && timePart) {
+                    return dateString; // Return as is since it's already in our local format
+                }
+                return 'Invalid Date';
+            }
+            return date.toLocaleString('en-US', {
+                year: 'numeric',
+                month: 'numeric',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: true
+            });
+        } catch (e) {
+            console.error('Error formatting date:', e);
+            return dateString; // Return original string if parsing fails
+        }
+    }
+
+    function showNotification(message, type = 'info') {
+        const notification = document.createElement('div');
+        notification.className = `alert alert-${type} alert-dismissible fade show notification`;
+        notification.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        document.getElementById('notifications').appendChild(notification);
+
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.remove();
+            }
+        }, 5000);
+    }
+
+    function updateElapsedTime() {
+        if (scanStartTime) {
+            const elapsed = Math.floor((Date.now() - scanStartTime) / 1000);
+            document.getElementById('scanElapsedTime').textContent = `Elapsed: ${elapsed}s`;
+        }
+    }
+
+    // Enhanced Form submission handling
+    $('#scanForm').on('submit', function(e) {
+        e.preventDefault();
+
+        const targetUrl = $('#target_url').val();
+
+        // Enhanced URL validation
+        try {
+            const url = new URL(targetUrl);
+            if (!['http:', 'https:'].includes(url.protocol)) {
+                showNotification('Please enter a valid URL with http:// or https://', 'danger');
+                return;
+            }
+        } catch (error) {
+            showNotification('Please enter a valid URL format', 'danger');
+            return;
+        }
+
+        // Update UI
+        $('#scanButton').attr('disabled', true);
+        $('#scanSpinner').removeClass('d-none');
+        $('#scanIcon').removeClass('fas fa-search').addClass('fas fa-cog fa-spin');
+        $('#scanStatus').removeClass('d-none');
+
+        scanStartTime = Date.now();
+        document.getElementById('scanStartTime').textContent = `Started: ${new Date().toLocaleTimeString()}`;
+        scanTimer = setInterval(updateElapsedTime, 1000);
+
+        showNotification(`Starting security scan for: ${targetUrl}`, 'info');
+
+        // Start the scan via AJAX
+        $.ajax({
+            url: '/start_scan',
+            type: 'POST',
+            data: { target_url: targetUrl },
+            dataType: 'json',
+            success: function(response) {
+                showNotification('Scan initiated successfully!', 'success');
+                pollScanStatus(response.scan_id);
+            },
+            error: function(xhr, status, error) {
+                console.error('Error starting scan:', error);
+                showNotification(`Failed to start scan: ${error}`, 'danger');
+                resetScanButton();
+            }
+        });
+    });
+
+    function pollScanStatus(scanId) {
+        let failedAttempts = 0;
+        const maxFailedAttempts = 3;
+        let lastProgress = 0;
+        let stuckCounter = 0;
+        const maxStuckTime = 5; // Maximum number of consecutive polls with same progress
+
+        const statusInterval = setInterval(function() {
+            $.ajax({
+                url: '/scan_status/' + scanId,
+                type: 'GET',
+                dataType: 'json',
+                success: function(response) {
+                    failedAttempts = 0; // Reset failed attempts counter on success
+
+                    // Update progress
+                    const progress = response.progress || 0;
+                    $('#scanProgressBar').css('width', progress + '%');
+                    $('#scanProgressPercent').text(progress + '%');
+
+                    // Check if progress is stuck
+                    if (progress === lastProgress) {
+                        stuckCounter++;
+                        if (stuckCounter >= maxStuckTime) {
+                            // If progress appears stuck, check if scan is still running
+                            if (response.status && response.status.includes('scanning with rule:')) {
+                                // Still running, update UI with current activity
+                                $('#currentRule').text(response.status);
+                                stuckCounter = 0; // Reset stuck counter as we know it's still active
+                            }
+                        }
+                    } else {
+                        stuckCounter = 0;
+                        lastProgress = progress;
+                    }
+
+                    // Update status text with more detail
+                    if (response.status) {
+                        $('#scanStatusText').text(response.status);
+                        if (response.status.includes('scanning with rule:')) {
+                            const rule = response.status.split('scanning with rule:')[1].trim();
+                            $('#currentRule').text('Current rule: ' + rule);
+                        }
+                    }
+
+                    if (response.completed) {
+                        clearInterval(statusInterval);
+                        if (response.scan_db_id) {
+                            showNotification(`Scan completed successfully! <a href="/scan/${response.scan_db_id}" class="alert-link">View Results</a>`, 'success');
+                        } else if (response.error) {
+                            showNotification('Scan completed with errors: ' + response.error, 'warning');
+                        }
+                        resetScanButton();
+
+                        // Refresh data after scan completion
+                        setTimeout(function() {
+                            loadQuickStats();
+                            refreshRecentScans();
+                        }, 2000);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    failedAttempts++;
+                    console.error('Error checking scan status:', error);
+
+                    // Only show error after multiple failed attempts
+                    if (failedAttempts >= maxFailedAttempts) {
+                        clearInterval(statusInterval);
+                        showNotification('Error checking scan status. The scan may still be running in the background.', 'warning');
+                        resetScanButton();
+                    }
+                }
+            });
+        }, 3000); // Poll every 3 seconds
+    }
+
+    function resetScanButton() {
+        $('#scanButton').attr('disabled', false);
+        $('#scanSpinner').addClass('d-none');
+        $('#scanIcon').removeClass('fas fa-cog fa-spin').addClass('fas fa-search');
+
+        // Reset progress after delay
+        setTimeout(() => {
+            $('#scanStatus').addClass('d-none');
+            $('#scanProgressBar').css('width', '0%');
+            $('#scanProgressPercent').text('0%');
+        }, 3000);
+    }
+
+    function refreshRecentScans() {
+        // Reload recent scans data
+        fetch('/api/scans?limit=5')
+            .then(response => response.json())
+            .then(scans => {
+                // Update the recentScans variable and repopulate
+                window.recentScans = scans;
+                populateRecentScans();
+            })
+            .catch(error => console.error('Error refreshing recent scans:', error));
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Security Scan Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.11.5/css/dataTables.bootstrap5.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body {
+            padding-top: 20px;
+            padding-bottom: 20px;
+            background-color: #f8f9fa;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        .navbar {
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .card {
+            margin-bottom: 20px;
+            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+            border: none;
+            border-radius: 10px;
+        }
+        .risk-high {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        .risk-medium {
+            color: #ffc107;
+            font-weight: bold;
+        }
+        .risk-low {
+            color: #17a2b8;
+            font-weight: bold;
+        }
+        .risk-info {
+            color: #6c757d;
+            font-weight: bold;
+        }
+        .navbar-brand {
+            font-weight: bold;
+        }
+        .btn {
+            border-radius: 8px;
+        }
+        .form-control {
+            border-radius: 8px;
+        }
+        .table {
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .progress {
+            border-radius: 8px;
+        }
+        .alert {
+            border-radius: 8px;
+        }
+    </style>
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <div class="container">
+        <nav class="navbar navbar-expand-lg navbar-dark bg-dark rounded">
+            <div class="container-fluid">
+                <a class="navbar-brand" href="/">
+                    <i class="fas fa-shield-alt"></i> Security Testing Dashboard
+                </a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarNav">
+                    <ul class="navbar-nav">
+                        <li class="nav-item">
+                            <a class="nav-link" href="/">
+                                <i class="fas fa-home"></i> Home
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/dashboard">
+                                <i class="fas fa-tachometer-alt"></i> Dashboard
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/schedule">
+                                <i class="fas fa-clock"></i> Schedule Scans
+                            </a>
+                        </li>
+                    </ul>
+                    <ul class="navbar-nav ms-auto">
+                        <li class="nav-item">
+                            <span class="navbar-text">
+                                <i class="fas fa-clock"></i> <span id="currentTime"></span>
+                            </span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </nav>
+
+        {% block content %}{% endblock %}
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
+    <script src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.11.5/js/dataTables.bootstrap5.min.js"></script>
+
+    <script>
+        // Update current time in navbar
+        function updateTime() {
+            const now = new Date();
+            const timeString = now.toLocaleTimeString();
+            const timeElement = document.getElementById('currentTime');
+            if (timeElement) {
+                timeElement.textContent = timeString;
+            }
+        }
+
+        // Update time every second
+        setInterval(updateTime, 1000);
+        updateTime(); // Initial call
+    </script>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

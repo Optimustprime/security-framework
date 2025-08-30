@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+
+{% block head %}
+<title>Scan Details</title>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header bg-dark text-white">
+                <h4>Scan Details</h4>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h5>Scan Information</h5>
+                        <table class="table">
+                            <tr>
+                                <th>Target URL:</th>
+                                <td>{{ scan.target_url }}</td>
+                            </tr>
+                            <tr>
+                                <th>Scan Date:</th>
+                                <td>{{ scan.scan_date }}</td>
+                            </tr>
+                            <tr>
+                                <th>Total Alerts:</th>
+                                <td>{{ scan.total_alerts }}</td>
+                            </tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h5>Risk Summary</h5>
+                        <table class="table">
+                            <tr>
+                                <th class="risk-high">High Risk:</th>
+                                <td>{{ scan.high_risk }}</td>
+                            </tr>
+                            <tr>
+                                <th class="risk-medium">Medium Risk:</th>
+                                <td>{{ scan.medium_risk }}</td>
+                            </tr>
+                            <tr>
+                                <th class="risk-low">Low Risk:</th>
+                                <td>{{ scan.low_risk }}</td>
+                            </tr>
+                            <tr>
+                                <th class="risk-info">Informational:</th>
+                                <td>{{ scan.info_risk }}</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header bg-dark text-white">
+                <h4>Scan Alerts</h4>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table id="scanAlertsTable" class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>Risk Level</th>
+                                <th>Alert Name</th>
+                                <th>URL</th>
+                                <th>CWE ID</th>
+                                <th>Critical Endpoint</th>
+                                <th>Confidence</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Data will be loaded via AJAX -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    $(document).ready(function() {
+        // Load scan alerts via AJAX
+        $.ajax({
+            url: '/api/scan/{{ scan.id }}',
+            type: 'GET',
+            dataType: 'json',
+            success: function(response) {
+                // Initialize DataTable with the retrieved data
+                $('#scanAlertsTable').DataTable({
+                    data: response.alerts,
+                    columns: [
+                        {
+                            data: 'risk_level',
+                            render: function(data) {
+                                let colorClass = '';
+                                switch(data) {
+                                    case 'High':
+                                        colorClass = 'risk-high';
+                                        break;
+                                    case 'Medium':
+                                        colorClass = 'risk-medium';
+                                        break;
+                                    case 'Low':
+                                        colorClass = 'risk-low';
+                                        break;
+                                    default:
+                                        colorClass = 'risk-info';
+                                }
+                                return `<span class="${colorClass}">${data}</span>`;
+                            }
+                        },
+                        { data: 'alert_name' },
+                        { data: 'url' },
+                        { data: 'cwe_id' },
+                        {
+                            data: 'is_critical_endpoint',
+                            render: function(data) {
+                                return data === 1 ? 'Yes' : 'No';
+                            }
+                        },
+                        { data: 'confidence' }
+                    ],
+                    order: [[0, 'desc'], [5, 'desc']],
+                    pageLength: 25,
+                    responsive: true
+                });
+            },
+            error: function(xhr, status, error) {
+                console.error('Error loading scan details:', error);
+                alert('Failed to load scan details. Please try again later.');
+            }
+        });
+    });
+</script>
+{% endblock %}
