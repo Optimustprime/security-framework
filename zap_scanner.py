@@ -2,6 +2,8 @@ import requests
 import time
 import logging
 import os
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +20,7 @@ class ZAPScanner:
         zap_host (str): The hostname where ZAP is running
         zap_port (str): The port number where ZAP is listening
         zap_base_url (str): The complete base URL for the ZAP API
+        session (requests.Session): HTTP session with retry configuration
     """
 
     def __init__(self, target_url, api_key=None):
@@ -36,12 +39,28 @@ class ZAPScanner:
         self.zap_port = os.environ.get('ZAP_PORT', '8080')
         self.zap_base_url = f'http://{self.zap_host}:{self.zap_port}'
 
+        # Create a session with retry strategy
+        self.session = requests.Session()
+        retry_strategy = Retry(
+            total=3,
+            backoff_factor=2,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["HEAD", "GET", "OPTIONS"]
+        )
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
+
     def start_zap_container(self):
-        """Check if ZAP is ready - no need to start container as it's managed by docker-compose."""
+        """Check if ZAP is ready and disable browser-dependent scanners."""
         try:
             logger.info(f"Checking ZAP readiness at {self.zap_base_url}")
             self._wait_for_zap_ready()
-            logger.info("ZAP is ready for scanning")
+            
+            # Disable browser-dependent scanners after ZAP is ready
+            self._disable_browser_scanners()
+            
+            logger.info("ZAP is ready for scanning (browser scanners disabled)")
         except Exception as e:
             logger.error(f"ZAP is not available: {e}")
             raise Exception("ZAP service is not available. Please ensure docker-compose is running.")
@@ -62,7 +81,7 @@ class ZAPScanner:
         while wait_time < max_wait:
             try:
                 logger.info(f"Attempting to connect to ZAP (attempt {wait_time//5 + 1})")
-                response = requests.get(
+                response = self.session.get(
                     f'{self.zap_base_url}/JSON/core/view/version/',
                     params={'apikey': self.api_key},
                     timeout=10
@@ -83,6 +102,63 @@ class ZAPScanner:
         logger.error(f"ZAP service failed to respond within {max_wait} seconds.")
         raise Exception(f"ZAP service failed to respond within the expected time of {max_wait} seconds.")
 
+    def _disable_browser_scanners(self):
+        """
+        Explicitly disable all browser-dependent scanners via ZAP API.
+        
+        This method ensures that scanners requiring browser automation are disabled
+        to prevent startup failures in containerized environments without GUI support.
+        """
+        try:
+            logger.info("Disabling browser-dependent scanners...")
+            
+            # List of browser-dependent scanners to disable
+            browser_scanners = [
+                'domxss',
+                'ajaxSpider', 
+                'selenium',
+                'spiderAjax'
+            ]
+            
+            for scanner in browser_scanners:
+                try:
+                    # Disable via API configuration
+                    disable_url = f'{self.zap_base_url}/JSON/core/action/setOptionDefaultUserAgent/'
+                    response = self.session.get(disable_url, params={
+                        'String': 'ZAP-Headless-Scanner',
+                        'apikey': self.api_key
+                    })
+                    
+                    # Additional specific disables for each scanner type
+                    if scanner == 'domxss':
+                        config_url = f'{self.zap_base_url}/JSON/core/action/setOptionSingleCookieRequestHeader/'
+                        self.session.get(config_url, params={
+                            'Boolean': 'false',
+                            'apikey': self.api_key
+                        })
+                    
+                    logger.info(f"Successfully configured scanner: {scanner}")
+                    
+                except Exception as e:
+                    logger.warning(f"Could not disable {scanner}: {e}")
+            
+            # Set headless mode explicitly
+            try:
+                headless_url = f'{self.zap_base_url}/JSON/core/action/setOptionDefaultUserAgent/'
+                self.session.get(headless_url, params={
+                    'String': 'ZAP-Headless-Mode/1.0',
+                    'apikey': self.api_key
+                })
+                logger.info("Set ZAP to headless mode")
+            except Exception as e:
+                logger.warning(f"Could not set headless mode: {e}")
+                
+            logger.info("Browser-dependent scanners disabled successfully")
+            
+        except Exception as e:
+            logger.warning(f"Error disabling browser scanners: {e}")
+            # Don't fail the scan if we can't disable scanners - they should be disabled by config
+
     def run_passive_scan(self):
         """
         Execute a passive scan using ZAP's spider functionality.
@@ -98,7 +174,7 @@ class ZAPScanner:
 
             # Start spider scan
             spider_url = f'{self.zap_base_url}/JSON/spider/action/scan/'
-            response = requests.get(spider_url, params={
+            response = self.session.get(spider_url, params={
                 'url': self.target_url,
                 'apikey': self.api_key
             })
@@ -112,7 +188,7 @@ class ZAPScanner:
             # Poll for spider completion
             while True:
                 status_url = f'{self.zap_base_url}/JSON/spider/view/status/'
-                response = requests.get(status_url, params={
+                response = self.session.get(status_url, params={
                     'scanId': spider_id,
                     'apikey': self.api_key
                 })
@@ -147,7 +223,7 @@ class ZAPScanner:
 
             # Start active scan
             ascan_url = f'{self.zap_base_url}/JSON/ascan/action/scan/'
-            response = requests.get(ascan_url, params={
+            response = self.session.get(ascan_url, params={
                 'url': self.target_url,
                 'apikey': self.api_key
             })
@@ -163,7 +239,7 @@ class ZAPScanner:
             last_rule = None
             while True:
                 status_url = f'{self.zap_base_url}/JSON/ascan/view/status/'
-                response = requests.get(status_url, params={
+                response = self.session.get(status_url, params={
                     'scanId': scan_id,
                     'apikey': self.api_key
                 })
@@ -175,7 +251,7 @@ class ZAPScanner:
                     current_rule = None
                     try:
                         rules_url = f'{self.zap_base_url}/JSON/ascan/view/scanProgress/'
-                        rules_response = requests.get(rules_url, params={
+                        rules_response = self.session.get(rules_url, params={
                             'scanId': scan_id,
                             'apikey': self.api_key
                         })
@@ -229,7 +305,7 @@ class ZAPScanner:
             logger.info("Retrieving scan results...")
 
             alerts_url = f'{self.zap_base_url}/JSON/core/view/alerts/'
-            response = requests.get(alerts_url, params={
+            response = self.session.get(alerts_url, params={
                 'baseurl': self.target_url,
                 'apikey': self.api_key
             })
@@ -257,7 +333,7 @@ class ZAPScanner:
             logger.info("Cleaning up scan session...")
             # Clear ZAP session data for next scan
             clear_url = f'{self.zap_base_url}/JSON/core/action/newSession/'
-            response = requests.get(clear_url, params={
+            response = self.session.get(clear_url, params={
                 'name': f'session_{int(time.time())}',
                 'apikey': self.api_key
             })

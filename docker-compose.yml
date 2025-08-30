@@ -4,7 +4,7 @@ services:
   web:
     build: .
     ports:
-      - "8080:5000"  # External port 8080 maps to internal Flask port 5000
+      - "8080:5000"
     volumes:
       - ./data:/data
     restart: unless-stopped
@@ -13,10 +13,13 @@ services:
       - PYTHONUNBUFFERED=1
       - ZAP_HOST=zap
       - ZAP_PORT=8080
+      - DOCKER_CLIENT_TIMEOUT=300
+      - COMPOSE_HTTP_TIMEOUT=300
     networks:
       - zap-network
     depends_on:
-      - zap
+      zap:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/api/statistics"]
       interval: 30s
@@ -28,31 +31,46 @@ services:
     image: ghcr.io/zaproxy/zaproxy:stable
     container_name: zap_proxy
     ports:
-      - "8090:8080"  # ZAP web interface
+      - "8090:8080"
     environment:
       - ZAP_PORT=8080
+      - JAVA_OPTS=-Xmx2g -XX:+UseG1GC -Djava.awt.headless=true
     command: >
-      bash -c "
       /zap/zap.sh -daemon
       -host 0.0.0.0
       -port 8080
       -config api.addrs.addr.name=.*
       -config api.addrs.addr.regex=true
       -config api.key=zap-api-key-12345
-      "
+      -config scanner.domxss.enabled=false
+      -config scanner.ajaxSpider.enabled=false
+      -config selenium.enabled=false
+      -config selenium.chromedriver.enabled=false
+      -config selenium.firefoxdriver.enabled=false
+      -config spiderAjax.browserId=
+      -config spiderAjax.enabled=false
+      -config connection.timeoutInSecs=300
+      -config scanner.threadPerHost=2
+      -config scanner.delayInMs=500
     networks:
       - zap-network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/JSON/core/view/version/?apikey=zap-api-key-12345"]
-      interval: 30s
-      timeout: 10s
+      interval: 45s
+      timeout: 30s
       retries: 5
-      start_period: 60s
+      start_period: 120s
 
 networks:
   zap-network:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.25.0.0/16
+        - subnet: 172.27.0.0/16
