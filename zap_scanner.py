@@ -41,6 +41,11 @@ class ZAPScanner:
         self.zap_base_url = f'http://{self.zap_host}:{self.zap_port}'
         self.scan_mode = scan_mode
 
+        # Initialize stop flag
+        self.should_stop = False
+        self.spider_id = None
+        self.active_scan_id = None
+
         # Create a session with retry strategy
         self.session = requests.Session()
         retry_strategy = Retry(
@@ -291,14 +296,25 @@ class ZAPScanner:
             if response.status_code != 200:
                 raise Exception(f"Failed to start spider: {response.text}")
 
-            spider_id = response.json()['scan']
-            logger.info(f"Spider started with ID: {spider_id}")
+            self.spider_id = response.json()['scan']
+            logger.info(f"Spider started with ID: {self.spider_id}")
 
-            # Poll for spider completion
+            # Poll for spider completion with stop check
             while True:
+                # Check if scan should be stopped
+                if hasattr(self, 'should_stop') and self.should_stop:
+                    logger.info("Stopping spider scan due to user request")
+                    # Stop the spider
+                    stop_url = f'{self.zap_base_url}/JSON/spider/action/stop/'
+                    self.session.get(stop_url, params={
+                        'scanId': self.spider_id,
+                        'apikey': self.api_key
+                    })
+                    raise Exception("Scan stopped by user")
+
                 status_url = f'{self.zap_base_url}/JSON/spider/view/status/'
                 response = self.session.get(status_url, params={
-                    'scanId': spider_id,
+                    'scanId': self.spider_id,
                     'apikey': self.api_key
                 })
 
@@ -340,16 +356,27 @@ class ZAPScanner:
             if response.status_code != 200:
                 raise Exception(f"Failed to start active scan: {response.text}")
 
-            scan_id = response.json()['scan']
-            logger.info(f"Active scan started with ID: {scan_id}")
+            self.active_scan_id = response.json()['scan']
+            logger.info(f"Active scan started with ID: {self.active_scan_id}")
 
-            # Poll for active scan completion with enhanced status reporting
+            # Poll for active scan completion with enhanced status reporting and stop check
             last_status = -1
             last_rule = None
             while True:
+                # Check if scan should be stopped
+                if hasattr(self, 'should_stop') and self.should_stop:
+                    logger.info("Stopping active scan due to user request")
+                    # Stop the active scan
+                    stop_url = f'{self.zap_base_url}/JSON/ascan/action/stop/'
+                    self.session.get(stop_url, params={
+                        'scanId': self.active_scan_id,
+                        'apikey': self.api_key
+                    })
+                    raise Exception("Scan stopped by user")
+
                 status_url = f'{self.zap_base_url}/JSON/ascan/view/status/'
                 response = self.session.get(status_url, params={
-                    'scanId': scan_id,
+                    'scanId': self.active_scan_id,
                     'apikey': self.api_key
                 })
 
@@ -361,7 +388,7 @@ class ZAPScanner:
                     try:
                         rules_url = f'{self.zap_base_url}/JSON/ascan/view/scanProgress/'
                         rules_response = self.session.get(rules_url, params={
-                            'scanId': scan_id,
+                            'scanId': self.active_scan_id,
                             'apikey': self.api_key
                         })
                         if rules_response.status_code == 200:
@@ -452,6 +479,56 @@ class ZAPScanner:
                 logger.warning(f"Failed to clear ZAP session: {response.status_code}")
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
+
+    def stop_scan(self):
+        """
+        Stop the current scan by setting the should_stop flag and stopping active ZAP scans.
+        """
+        try:
+            self.should_stop = True
+            logger.info("Stop signal sent to scanner")
+
+            # Stop any active spider scans
+            if self.spider_id:
+                try:
+                    stop_url = f'{self.zap_base_url}/JSON/spider/action/stop/'
+                    response = self.session.get(stop_url, params={
+                        'scanId': self.spider_id,
+                        'apikey': self.api_key
+                    })
+                    if response.status_code == 200:
+                        logger.info(f"Spider scan {self.spider_id} stopped successfully")
+                    else:
+                        logger.warning(f"Failed to stop spider scan: {response.status_code}")
+                except Exception as e:
+                    logger.error(f"Error stopping spider scan: {e}")
+
+            # Stop any active security scans
+            if self.active_scan_id:
+                try:
+                    stop_url = f'{self.zap_base_url}/JSON/ascan/action/stop/'
+                    response = self.session.get(stop_url, params={
+                        'scanId': self.active_scan_id,
+                        'apikey': self.api_key
+                    })
+                    if response.status_code == 200:
+                        logger.info(f"Active scan {self.active_scan_id} stopped successfully")
+                    else:
+                        logger.warning(f"Failed to stop active scan: {response.status_code}")
+                except Exception as e:
+                    logger.error(f"Error stopping active scan: {e}")
+
+            # Stop all scans as a fallback
+            try:
+                stop_all_url = f'{self.zap_base_url}/JSON/ascan/action/stopAllScans/'
+                self.session.get(stop_all_url, params={'apikey': self.api_key})
+                logger.info("Sent stop signal to all active scans")
+            except Exception as e:
+                logger.error(f"Error stopping all scans: {e}")
+
+        except Exception as e:
+            logger.error(f"Error in stop_scan: {e}")
+            self.should_stop = True  # Ensure flag is set even if API calls fail
 
 # Example Usage:
 if __name__ == '__main__':

@@ -85,7 +85,12 @@
                                 <span id="scanStatusText">Initializing scan...</span>
                                 <small id="currentRule" class="text-light d-block"></small>
                             </div>
-                            <span id="scanProgressPercent">0%</span>
+                            <div class="d-flex align-items-center">
+                                <span id="scanProgressPercent" class="me-3">0%</span>
+                                <button type="button" class="btn btn-danger btn-sm" id="stopScanButton" onclick="stopScan()">
+                                    <i class="fas fa-stop"></i> Stop Scan
+                                </button>
+                            </div>
                         </div>
                         <div class="progress mb-2">
                             <div id="scanProgressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-warning"
@@ -155,6 +160,7 @@
 
     let scanStartTime;
     let scanTimer;
+    let currentScanId = null; // Track current scan ID for stop functionality
 
     document.addEventListener('DOMContentLoaded', function() {
         loadQuickStats();
@@ -320,6 +326,52 @@
         }
     }
 
+    function stopScan() {
+        if (!currentScanId) {
+            showNotification('No active scan to stop', 'warning');
+            return;
+        }
+
+        // Disable stop button and show loading
+        const stopButton = document.getElementById('stopScanButton');
+        stopButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Stopping...';
+        stopButton.disabled = true;
+
+        // Call stop scan API
+        $.ajax({
+            url: '/stop_scan/' + currentScanId,
+            type: 'POST',
+            dataType: 'json',
+            success: function(response) {
+                showNotification('Scan stopped successfully!', 'success');
+                resetScanButton();
+
+                // Clear timers
+                if (scanTimer) {
+                    clearInterval(scanTimer);
+                }
+
+                // Update status
+                $('#scanStatusText').text('Stopped by user');
+                $('#scanProgressBar').removeClass('progress-bar-animated');
+
+                currentScanId = null;
+            },
+            error: function(xhr, status, error) {
+                console.error('Error stopping scan:', error);
+                let errorMsg = 'Failed to stop scan';
+                if (xhr.responseJSON && xhr.responseJSON.error) {
+                    errorMsg = xhr.responseJSON.error;
+                }
+                showNotification(errorMsg, 'danger');
+
+                // Re-enable stop button
+                stopButton.innerHTML = '<i class="fas fa-stop"></i> Stop Scan';
+                stopButton.disabled = false;
+            }
+        });
+    }
+
     // Enhanced Form submission handling
     $('#scanForm').on('submit', function(e) {
         e.preventDefault();
@@ -357,6 +409,7 @@
             data: { target_url: targetUrl },
             dataType: 'json',
             success: function(response) {
+                currentScanId = response.scan_id; // Store scan ID for stop functionality
                 showNotification('Scan initiated successfully!', 'success');
                 pollScanStatus(response.scan_id);
             },

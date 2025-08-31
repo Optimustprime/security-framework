@@ -464,6 +464,7 @@ def run_scan(scan_id, target_url, scheduled_scan_id=None, scan_mode='light'):
         scheduled_scan_id (int, optional): ID of the associated scheduled scan, if any
         scan_mode (str, optional): The scan intensity ('light', 'medium', 'full')
     """
+    scanner = None
     try:
         logger.info(f"Starting scan {scan_id} for {target_url} with mode {scan_mode}")
 
@@ -488,6 +489,10 @@ def run_scan(scan_id, target_url, scheduled_scan_id=None, scan_mode='light'):
             'scan_db_id': scan_db_id
         }
 
+        # Check for stop signal before proceeding
+        if active_scans[scan_id].get('stopped'):
+            raise Exception("Scan stopped by user")
+
         # Update database with status
         conn = get_db_connection()
         conn.execute('UPDATE scans SET status = ?, progress = ? WHERE id = ?',
@@ -505,9 +510,17 @@ def run_scan(scan_id, target_url, scheduled_scan_id=None, scan_mode='light'):
         scanner = ZAPScanner(target_url=target_url, api_key=api_key, scan_mode=scan_mode)
         logger.info(f"Scan {scan_id}: ZAP Scanner initialized with {scan_mode} mode")
 
+        # Store scanner reference for stop functionality
+        active_scans[scan_id]['scanner'] = scanner
+
         # Check ZAP readiness
         scanner.start_zap_container()
         logger.info(f"Scan {scan_id}: ZAP container started successfully")
+
+        # Check for stop signal before passive scan
+        if active_scans[scan_id].get('stopped'):
+            scanner.stop_scan()
+            raise Exception("Scan stopped by user")
 
         # Update status for passive scan
         active_scans[scan_id]['status'] = 'Running passive scan (spider)'
@@ -521,6 +534,11 @@ def run_scan(scan_id, target_url, scheduled_scan_id=None, scan_mode='light'):
         # Run the passive scan
         scanner.run_passive_scan()
 
+        # Check for stop signal before active scan
+        if active_scans[scan_id].get('stopped'):
+            scanner.stop_scan()
+            raise Exception("Scan stopped by user")
+
         # Update status for active scan
         active_scans[scan_id]['status'] = 'Running active scan'
         active_scans[scan_id]['progress'] = 40
@@ -532,6 +550,10 @@ def run_scan(scan_id, target_url, scheduled_scan_id=None, scan_mode='light'):
 
         # Run the active scan
         scanner.run_active_scan()
+
+        # Check for stop signal before processing results
+        if active_scans[scan_id].get('stopped'):
+            raise Exception("Scan stopped by user")
 
         # Update status for processing results
         active_scans[scan_id]['status'] = 'Retrieving and processing results'
@@ -606,6 +628,9 @@ def run_scan(scan_id, target_url, scheduled_scan_id=None, scan_mode='light'):
     except Exception as e:
         # Handle any exceptions that occur during the scan
         error_msg = f'Error: {str(e)}'
+        if 'stopped by user' in str(e).lower():
+            error_msg = 'Stopped by user'
+
         active_scans[scan_id]['status'] = error_msg
         active_scans[scan_id]['completed'] = True
         logger.error(f"Error in scan {scan_id}: {str(e)}")
@@ -622,7 +647,8 @@ def run_scan(scan_id, target_url, scheduled_scan_id=None, scan_mode='light'):
 
         # Try to stop the container if it was started
         try:
-            scanner.stop_zap_container()
+            if scanner:
+                scanner.stop_zap_container()
         except:
             pass
 
@@ -1224,6 +1250,7 @@ def run_scan(scan_id, target_url, scheduled_scan_id=None, scan_mode='light'):
         scheduled_scan_id (int, optional): ID of the associated scheduled scan, if any
         scan_mode (str, optional): The scan intensity ('light', 'medium', 'full')
     """
+    scanner = None
     try:
         logger.info(f"Starting scan {scan_id} for {target_url} with mode {scan_mode}")
 
@@ -1248,6 +1275,10 @@ def run_scan(scan_id, target_url, scheduled_scan_id=None, scan_mode='light'):
             'scan_db_id': scan_db_id
         }
 
+        # Check for stop signal before proceeding
+        if active_scans[scan_id].get('stopped'):
+            raise Exception("Scan stopped by user")
+
         # Update database with status
         conn = get_db_connection()
         conn.execute('UPDATE scans SET status = ?, progress = ? WHERE id = ?',
@@ -1265,9 +1296,17 @@ def run_scan(scan_id, target_url, scheduled_scan_id=None, scan_mode='light'):
         scanner = ZAPScanner(target_url=target_url, api_key=api_key, scan_mode=scan_mode)
         logger.info(f"Scan {scan_id}: ZAP Scanner initialized with {scan_mode} mode")
 
+        # Store scanner reference for stop functionality
+        active_scans[scan_id]['scanner'] = scanner
+
         # Check ZAP readiness
         scanner.start_zap_container()
         logger.info(f"Scan {scan_id}: ZAP container started successfully")
+
+        # Check for stop signal before passive scan
+        if active_scans[scan_id].get('stopped'):
+            scanner.stop_scan()
+            raise Exception("Scan stopped by user")
 
         # Update status for passive scan
         active_scans[scan_id]['status'] = 'Running passive scan (spider)'
@@ -1281,6 +1320,11 @@ def run_scan(scan_id, target_url, scheduled_scan_id=None, scan_mode='light'):
         # Run the passive scan
         scanner.run_passive_scan()
 
+        # Check for stop signal before active scan
+        if active_scans[scan_id].get('stopped'):
+            scanner.stop_scan()
+            raise Exception("Scan stopped by user")
+
         # Update status for active scan
         active_scans[scan_id]['status'] = 'Running active scan'
         active_scans[scan_id]['progress'] = 40
@@ -1292,6 +1336,10 @@ def run_scan(scan_id, target_url, scheduled_scan_id=None, scan_mode='light'):
 
         # Run the active scan
         scanner.run_active_scan()
+
+        # Check for stop signal before processing results
+        if active_scans[scan_id].get('stopped'):
+            raise Exception("Scan stopped by user")
 
         # Update status for processing results
         active_scans[scan_id]['status'] = 'Retrieving and processing results'
@@ -1366,6 +1414,9 @@ def run_scan(scan_id, target_url, scheduled_scan_id=None, scan_mode='light'):
     except Exception as e:
         # Handle any exceptions that occur during the scan
         error_msg = f'Error: {str(e)}'
+        if 'stopped by user' in str(e).lower():
+            error_msg = 'Stopped by user'
+
         active_scans[scan_id]['status'] = error_msg
         active_scans[scan_id]['completed'] = True
         logger.error(f"Error in scan {scan_id}: {str(e)}")
@@ -1382,9 +1433,75 @@ def run_scan(scan_id, target_url, scheduled_scan_id=None, scan_mode='light'):
 
         # Try to stop the container if it was started
         try:
-            scanner.stop_zap_container()
+            if scanner:
+                scanner.stop_zap_container()
         except:
             pass
+
+@app.route('/stop_scan/<scan_id>', methods=['POST'])
+def stop_scan(scan_id):
+    """
+    Stop a running scan.
+
+    Args:
+        scan_id (str): UUID of the scan to stop
+
+    Returns:
+        Response: JSON object confirming scan stop or error message
+    """
+    try:
+        # Check if scan is in active scans
+        if scan_id not in active_scans:
+            return jsonify({"error": "Scan not found or already completed"}), 404
+
+        scan_info = active_scans[scan_id]
+
+        # Check if scan is already completed
+        if scan_info.get('completed', False):
+            return jsonify({"error": "Scan already completed"}), 400
+
+        # Mark scan as stopped in active_scans
+        active_scans[scan_id]['status'] = 'Stopping scan...'
+        active_scans[scan_id]['stopped'] = True
+
+        # If we have a scanner instance, call its stop_scan method
+        scanner = scan_info.get('scanner')
+        if scanner:
+            try:
+                logger.info(f"Calling stop_scan on scanner for scan {scan_id}")
+                scanner.stop_scan()
+                logger.info(f"Scanner stop_scan method called successfully for scan {scan_id}")
+            except Exception as scanner_error:
+                logger.error(f"Error calling scanner stop_scan: {scanner_error}")
+                # Continue with the rest of the stop process even if scanner stop fails
+
+        # Mark scan as completed
+        active_scans[scan_id]['status'] = 'Stopped by user'
+        active_scans[scan_id]['completed'] = True
+
+        # Update database with stopped status
+        scan_db_id = scan_info.get('scan_db_id')
+        if scan_db_id:
+            conn = get_db_connection()
+            conn.execute('''
+                UPDATE scans 
+                SET status = 'Stopped by user', progress = ?
+                WHERE id = ?
+            ''', (scan_info.get('progress', 0), scan_db_id))
+            conn.commit()
+            conn.close()
+
+        logger.info(f"Scan {scan_id} stopped by user request")
+
+        return jsonify({
+            "success": True,
+            "message": "Scan stopped successfully",
+            "scan_id": scan_id
+        })
+
+    except Exception as e:
+        logger.error(f"Error stopping scan {scan_id}: {e}")
+        return jsonify({"error": f"Failed to stop scan: {str(e)}"}), 500
 
 if __name__ == '__main__':
     # Initialize the database
