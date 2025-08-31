@@ -34,7 +34,7 @@ services:
       - "8090:8080"
     environment:
       - ZAP_PORT=8080
-      - JAVA_OPTS=-Xmx2g -XX:+UseG1GC -Djava.awt.headless=true
+      - JAVA_OPTS=-Xmx512m -XX:+UseG1GC -Djava.awt.headless=true -XX:+UnlockExperimentalVMOptions -XX:+UseZGC
     command: >
       /zap/zap.sh -daemon
       -host 0.0.0.0
@@ -49,24 +49,40 @@ services:
       -config selenium.firefoxdriver.enabled=false
       -config spiderAjax.browserId=
       -config spiderAjax.enabled=false
-      -config connection.timeoutInSecs=300
-      -config scanner.threadPerHost=2
-      -config scanner.delayInMs=500
+      -config connection.timeoutInSecs=60
+      -config scanner.threadPerHost=1
+      -config scanner.delayInMs=200
+      -config spider.maxDepth=1
+      -config spider.maxChildren=5
+      -config spider.maxDuration=60
+      -config spider.threadCount=1
+      -config scanner.strength=LOW
+      -config scanner.attackOnStart=false
+      -config scanner.hostPerScan=1
+      -config scanner.maxRuleDurationInMins=1
+      -config scanner.maxScanDurationInMins=3
+      -config pscan.enabled=true
+      -config ascan.enabled=true
+      -config ascan.maxAlertsPerRule=3
+      -config spider.parseComments=false
+      -config spider.parseRobotsTxt=false
+      -config spider.parseSitemapXml=false
+      -config spider.handleODataParametersVisited=false
     networks:
       - zap-network
     restart: unless-stopped
     deploy:
       resources:
         limits:
-          memory: 2G
+          memory: 512M
         reservations:
-          memory: 1G
+          memory: 256M
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/JSON/core/view/version/?apikey=zap-api-key-12345"]
-      interval: 45s
+      interval: 60s
       timeout: 30s
-      retries: 5
-      start_period: 120s
+      retries: 3
+      start_period: 90s
 
 networks:
   zap-network:

@@ -328,6 +328,7 @@ def start_scan():
 
     Expects form data containing:
     - target_url: The URL to scan
+    - scan_mode: The scan intensity ('light', 'medium', 'full')
 
     Returns:
         Response: JSON object with scan_id for tracking progress
@@ -336,6 +337,8 @@ def start_scan():
         400: If target_url is not provided
     """
     target_url = request.form.get('target_url')
+    scan_mode = request.form.get('scan_mode', 'light')  # Default to light scan
+
     if not target_url:
         return jsonify({"error": "Target URL is required"}), 400
 
@@ -345,6 +348,7 @@ def start_scan():
     # Initialize scan status in the active_scans dictionary
     active_scans[scan_id] = {
         'target_url': target_url,
+        'scan_mode': scan_mode,
         'status': 'Initializing',
         'progress': 0,
         'completed': False,
@@ -354,12 +358,12 @@ def start_scan():
     # Start the scan in a background thread
     scan_thread = threading.Thread(
         target=run_scan,
-        args=(scan_id, target_url),
+        args=(scan_id, target_url, None, scan_mode),
         daemon=True
     )
     scan_thread.start()
 
-    return jsonify({"scan_id": scan_id})
+    return jsonify({"scan_id": scan_id, "scan_mode": scan_mode})
 
 @app.route('/scan_status/<scan_id>')
 def scan_status(scan_id):
@@ -450,7 +454,7 @@ def get_local_datetime():
     """Get current datetime in local timezone"""
     return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-def run_scan(scan_id, target_url, scheduled_scan_id=None):
+def run_scan(scan_id, target_url, scheduled_scan_id=None, scan_mode='light'):
     """
     Run a ZAP scan in a background thread.
 
@@ -458,9 +462,10 @@ def run_scan(scan_id, target_url, scheduled_scan_id=None):
         scan_id (str): Unique identifier for the scan
         target_url (str): The URL to be scanned
         scheduled_scan_id (int, optional): ID of the associated scheduled scan, if any
+        scan_mode (str, optional): The scan intensity ('light', 'medium', 'full')
     """
     try:
-        logger.info(f"Starting scan {scan_id} for {target_url}")
+        logger.info(f"Starting scan {scan_id} for {target_url} with mode {scan_mode}")
 
         # Create initial scan record in database with local time
         conn = get_db_connection()
@@ -496,9 +501,9 @@ def run_scan(scan_id, target_url, scheduled_scan_id=None):
         api_key = "zap-api-key-12345"
         logger.info(f"Scan {scan_id}: Using fixed API key")
 
-        # Initialize the scanner
-        scanner = ZAPScanner(target_url=target_url, api_key=api_key)
-        logger.info(f"Scan {scan_id}: ZAP Scanner initialized")
+        # Initialize the scanner with scan mode
+        scanner = ZAPScanner(target_url=target_url, api_key=api_key, scan_mode=scan_mode)
+        logger.info(f"Scan {scan_id}: ZAP Scanner initialized with {scan_mode} mode")
 
         # Check ZAP readiness
         scanner.start_zap_container()
@@ -1209,7 +1214,7 @@ def get_schedule_by_id(schedule_id):
         return None
 
 # Update run_scan to handle scheduled scans
-def run_scan(scan_id, target_url, scheduled_scan_id=None):
+def run_scan(scan_id, target_url, scheduled_scan_id=None, scan_mode='light'):
     """
     Run a ZAP scan in a background thread.
 
@@ -1217,9 +1222,10 @@ def run_scan(scan_id, target_url, scheduled_scan_id=None):
         scan_id (str): Unique identifier for the scan
         target_url (str): The URL to be scanned
         scheduled_scan_id (int, optional): ID of the associated scheduled scan, if any
+        scan_mode (str, optional): The scan intensity ('light', 'medium', 'full')
     """
     try:
-        logger.info(f"Starting scan {scan_id} for {target_url}")
+        logger.info(f"Starting scan {scan_id} for {target_url} with mode {scan_mode}")
 
         # Create initial scan record in database with local time
         conn = get_db_connection()
@@ -1255,9 +1261,9 @@ def run_scan(scan_id, target_url, scheduled_scan_id=None):
         api_key = "zap-api-key-12345"
         logger.info(f"Scan {scan_id}: Using fixed API key")
 
-        # Initialize the scanner
-        scanner = ZAPScanner(target_url=target_url, api_key=api_key)
-        logger.info(f"Scan {scan_id}: ZAP Scanner initialized")
+        # Initialize the scanner with scan mode
+        scanner = ZAPScanner(target_url=target_url, api_key=api_key, scan_mode=scan_mode)
+        logger.info(f"Scan {scan_id}: ZAP Scanner initialized with {scan_mode} mode")
 
         # Check ZAP readiness
         scanner.start_zap_container()

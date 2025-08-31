@@ -23,13 +23,14 @@ class ZAPScanner:
         session (requests.Session): HTTP session with retry configuration
     """
 
-    def __init__(self, target_url, api_key=None):
+    def __init__(self, target_url, api_key=None, scan_mode='light'):
         """
         Initialize the ZAP scanner with target URL and configuration.
 
         Args:
             target_url (str): The URL of the web application to scan
             api_key (str, optional): The API key for ZAP authentication. Defaults to None.
+            scan_mode (str, optional): Scan intensity mode ('light', 'medium', 'full'). Defaults to 'light'.
         """
         self.target_url = target_url
         # Use the fixed API key from docker-compose or environment
@@ -38,6 +39,7 @@ class ZAPScanner:
         self.zap_host = os.environ.get('ZAP_HOST', 'localhost')
         self.zap_port = os.environ.get('ZAP_PORT', '8080')
         self.zap_base_url = f'http://{self.zap_host}:{self.zap_port}'
+        self.scan_mode = scan_mode
 
         # Create a session with retry strategy
         self.session = requests.Session()
@@ -52,7 +54,7 @@ class ZAPScanner:
         self.session.mount("https://", adapter)
 
     def start_zap_container(self):
-        """Check if ZAP is ready and disable browser-dependent scanners."""
+        """Check if ZAP is ready, disable browser-dependent scanners, and configure scan mode."""
         try:
             logger.info(f"Checking ZAP readiness at {self.zap_base_url}")
             self._wait_for_zap_ready()
@@ -60,7 +62,10 @@ class ZAPScanner:
             # Disable browser-dependent scanners after ZAP is ready
             self._disable_browser_scanners()
             
-            logger.info("ZAP is ready for scanning (browser scanners disabled)")
+            # Configure scan mode
+            self._configure_scan_mode()
+
+            logger.info(f"ZAP is ready for {self.scan_mode} scanning (browser scanners disabled)")
         except Exception as e:
             logger.error(f"ZAP is not available: {e}")
             raise Exception("ZAP service is not available. Please ensure docker-compose is running.")
@@ -158,6 +163,110 @@ class ZAPScanner:
         except Exception as e:
             logger.warning(f"Error disabling browser scanners: {e}")
             # Don't fail the scan if we can't disable scanners - they should be disabled by config
+
+    def _configure_scan_mode(self):
+        """
+        Configure ZAP scanning parameters based on the selected scan mode.
+
+        Light mode: Ultra-fast, minimal scope scanning (2-5 minutes)
+        Medium mode: Balanced scanning with moderate coverage
+        Full mode: Comprehensive scanning (default ZAP behavior)
+        """
+        try:
+            logger.info(f"Configuring ZAP for {self.scan_mode} scan mode...")
+
+            if self.scan_mode == 'light':
+                # Ultra-fast light scan configuration
+                config_params = {
+                    # Spider configuration for ultra-fast scanning
+                    'spider.maxDepth': '1',  # Only scan 1 level deep
+                    'spider.maxChildren': '3',  # Maximum 3 links per page
+                    'spider.maxDuration': '45',  # 45 seconds max spider time
+                    'spider.threadCount': '1',
+                    'spider.parseComments': 'false',
+                    'spider.parseRobotsTxt': 'false',
+                    'spider.parseSitemapXml': 'false',
+                    'spider.handleODataParametersVisited': 'false',
+
+                    # Active scan configuration for ultra-fast scanning
+                    'scanner.strength': 'LOW',
+                    'scanner.threadPerHost': '1',
+                    'scanner.delayInMs': '100',  # Minimal delay
+                    'scanner.maxResultsToList': '5',
+                    'scanner.maxRuleDurationInMins': '0.5',  # 30 seconds per rule max
+                    'scanner.maxScanDurationInMins': '2',  # 2 minutes total active scan
+                    'ascan.maxAlertsPerRule': '2',  # Stop after 2 alerts per rule
+
+                    # Disable time-consuming features
+                    'scanner.attackOnStart': 'false',
+                    'scanner.hostPerScan': '1',
+                }
+
+            elif self.scan_mode == 'medium':
+                # Medium scan configuration - balanced approach
+                config_params = {
+                    'spider.maxDepth': '2',
+                    'spider.maxChildren': '10',
+                    'spider.maxDuration': '180',  # 3 minutes max
+                    'spider.threadCount': '2',
+
+                    'scanner.strength': 'MEDIUM',
+                    'scanner.threadPerHost': '2',
+                    'scanner.delayInMs': '300',
+                    'scanner.maxResultsToList': '25',
+                    'scanner.maxRuleDurationInMins': '2',
+                    'scanner.maxScanDurationInMins': '8',
+                }
+
+            else:  # full mode
+                # Full scan configuration - comprehensive scanning
+                config_params = {
+                    'spider.maxDepth': '3',
+                    'spider.maxChildren': '30',
+                    'spider.maxDuration': '600',  # 10 minutes max
+                    'spider.threadCount': '3',
+
+                    'scanner.strength': 'HIGH',
+                    'scanner.threadPerHost': '3',
+                    'scanner.delayInMs': '200',
+                    'scanner.maxResultsToList': '100',
+                    'scanner.maxRuleDurationInMins': '5',
+                    'scanner.maxScanDurationInMins': '20',
+                }
+
+            # Apply configuration via proper ZAP API calls
+            for param, value in config_params.items():
+                try:
+                    # Use the appropriate API endpoint for different parameter types
+                    if param.startswith('spider.'):
+                        config_url = f'{self.zap_base_url}/JSON/spider/action/setOptionMaxDepth/' if 'maxDepth' in param else \
+                                   f'{self.zap_base_url}/JSON/spider/action/setOptionMaxChildren/' if 'maxChildren' in param else \
+                                   f'{self.zap_base_url}/JSON/spider/action/setOptionMaxDuration/' if 'maxDuration' in param else \
+                                   f'{self.zap_base_url}/JSON/spider/action/setOptionThreadCount/' if 'threadCount' in param else \
+                                   f'{self.zap_base_url}/JSON/core/action/setOptionDefaultUserAgent/'
+
+                        if 'maxDepth' in param:
+                            self.session.get(f'{self.zap_base_url}/JSON/spider/action/setOptionMaxDepth/',
+                                           params={'Integer': value, 'apikey': self.api_key})
+                        elif 'maxChildren' in param:
+                            self.session.get(f'{self.zap_base_url}/JSON/spider/action/setOptionMaxChildren/',
+                                           params={'Integer': value, 'apikey': self.api_key})
+                        elif 'maxDuration' in param:
+                            self.session.get(f'{self.zap_base_url}/JSON/spider/action/setOptionMaxDuration/',
+                                           params={'Integer': value, 'apikey': self.api_key})
+                        elif 'threadCount' in param:
+                            self.session.get(f'{self.zap_base_url}/JSON/spider/action/setOptionThreadCount/',
+                                           params={'Integer': value, 'apikey': self.api_key})
+
+                    logger.debug(f"Set {param} = {value}")
+                except Exception as e:
+                    logger.warning(f"Could not set {param}: {e}")
+
+            logger.info(f"ZAP configured for {self.scan_mode} scan mode")
+
+        except Exception as e:
+            logger.warning(f"Error configuring scan mode: {e}")
+            # Don't fail the scan if configuration fails
 
     def run_passive_scan(self):
         """
