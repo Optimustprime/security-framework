@@ -82,7 +82,7 @@ A comprehensive web application security scanning platform built with Flask, OWA
    ```
 
 3. **Access the Dashboard**
-   - Web Interface: http://localhost:8080
+   - Web Interface: http://localhost:80
    - ZAP Proxy: http://localhost:8090
 
 4. **Verify Installation**
@@ -92,7 +92,7 @@ A comprehensive web application security scanning platform built with Flask, OWA
    ```
 
 ### First Scan
-1. Navigate to http://localhost:8080
+1. Navigate to http://localhost:80
 2. Enter a target URL (e.g., https://example.com)
 3. Select scan mode (Light recommended for first test)
 4. Click "Start Scan" and watch real-time progress
@@ -167,7 +167,7 @@ DB_PATH=/data/scan_results.db
 
 # ZAP configuration
 ZAP_HOST=zap
-ZAP_PORT=8080
+ZAP_PORT=80
 ZAP_API_KEY=zap-api-key-12345
 
 # Docker configuration
@@ -268,7 +268,7 @@ CREATE TABLE scheduled_scans (
 
 1. **Launch EC2 Instance**
    - Instance Type: t3.medium (4GB RAM minimum)
-   - Security Group: Allow ports 22, 80, 8080
+   - Security Group: Allow ports 22, 80, 80
    - Storage: 20GB+ EBS volume
 
 2. **Install Dependencies**
@@ -301,7 +301,7 @@ CREATE TABLE scheduled_scans (
        server_name your-domain.com;
        
        location / {
-           proxy_pass http://localhost:8080;
+           proxy_pass http://localhost:80;
            proxy_set_header Host $host;
            proxy_set_header X-Real-IP $remote_addr;
        }
@@ -414,7 +414,7 @@ security-framework/
 
 ```bash
 # Check application health
-curl http://localhost:8080/api/statistics
+curl http://localhost:80/api/statistics
 
 # Check ZAP health
 curl http://localhost:8090/JSON/core/view/version/?apikey=zap-api-key-12345

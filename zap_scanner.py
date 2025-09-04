@@ -37,7 +37,7 @@ class ZAPScanner:
         self.api_key = api_key or "zap-api-key-12345"
         # Get ZAP host and port from environment variables
         self.zap_host = os.environ.get('ZAP_HOST', 'localhost')
-        self.zap_port = os.environ.get('ZAP_PORT', '8080')
+        self.zap_port = os.environ.get('ZAP_PORT', '80')
         self.zap_base_url = f'http://{self.zap_host}:{self.zap_port}'
         self.scan_mode = scan_mode
 
